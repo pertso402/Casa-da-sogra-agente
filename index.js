@@ -5,58 +5,62 @@ const { OpenAI } = require('openai');
 const app = express();
 app.use(express.json());
 
+// Pega as variáveis e limpa espaços extras
+const getEnv = (key) => (process.env[key] ? process.env[key].trim() : null);
+
 const CONFIG = {
-    OPENAI_KEY: process.env.OPENAI_KEY,
-    SUPABASE_URL: process.env.SUPABASE_URL,
-    SUPABASE_KEY: process.env.SUPABASE_KEY,
-    EVOLUTION_URL: process.env.EVOLUTION_URL,
-    EVOLUTION_KEY: process.env.EVOLUTION_KEY,
-    INSTANCE: process.env.INSTANCE
+    OPENAI_KEY: getEnv('OPENAI_KEY'),
+    SUPABASE_URL: getEnv('SUPABASE_URL'),
+    SUPABASE_KEY: getEnv('SUPABASE_KEY'),
+    EVOLUTION_URL: getEnv('EVOLUTION_URL'),
+    EVOLUTION_KEY: getEnv('EVOLUTION_KEY'),
+    INSTANCE: getEnv('INSTANCE')
 };
 
-// Log de segurança para você ver no Easypanel se as chaves carregaram
-console.log("Iniciando Sofia com Instância:", CONFIG.INSTANCE);
+console.log("--- DEBUG SOFIA ---");
+console.log("Instância:", CONFIG.INSTANCE || "NÃO CONFIGURADA");
+console.log("OpenAI Key carregada:", CONFIG.OPENAI_KEY ? "SIM (começa com " + CONFIG.OPENAI_KEY.substring(0, 7) + ")" : "NÃO");
+console.log("--- FIM DEBUG ---");
 
-if (!CONFIG.OPENAI_KEY) {
-    console.error("ERRO CRÍTICO: OPENAI_KEY não encontrada nas variáveis de ambiente!");
+// Rota de teste para ver se o app subiu
+app.get('/', (req, res) => res.status(200).send("Sofia Online!"));
+
+// Só inicializa a OpenAI se tiver a chave, para não crashar o app
+let openai = null;
+if (CONFIG.OPENAI_KEY) {
+    openai = new OpenAI({ apiKey: CONFIG.OPENAI_KEY });
 }
-
-const openai = new OpenAI({ apiKey: CONFIG.OPENAI_KEY });
-
-app.get('/', (req, res) => res.send("Sofia está Online! 🚀"));
 
 app.post('/webhook', async (req, res) => {
     try {
+        if (!openai) return res.status(200).send("IA não configurada");
+
         const message = req.body.data?.messages?.[0];
         if (!message || message.key.fromMe) return res.sendStatus(200);
 
         const customerPhone = message.key.remoteJid.split('@')[0];
         const customerText = message.message?.conversation || message.message?.extendedTextMessage?.text || "";
-        if (!customerText) return res.sendStatus(200);
 
         const completion = await openai.chat.completions.create({
             model: "gpt-4o",
-            messages: [
-                { role: "system", content: "Você é a Sofia, atendente da Casa da Sogra. Seja simpática e humana." },
-                { role: "user", content: customerText }
-            ]
+            messages: [{ role: "system", content: "Você é a Sofia, atendente da Casa da Sogra." }, { role: "user", content: customerText }]
         });
-
-        const replyText = completion.choices[0].message.content;
 
         await axios.post(`${CONFIG.EVOLUTION_URL}/message/sendText/${CONFIG.INSTANCE}`, {
             number: customerPhone,
-            text: replyText
+            text: completion.choices[0].message.content
         }, {
             headers: { 'apikey': CONFIG.EVOLUTION_KEY }
         });
 
         res.sendStatus(200);
     } catch (error) {
-        console.error('Erro no processamento:', error.message);
-        res.status(500).send(error.message);
+        console.error('Erro no Webhook:', error.message);
+        res.sendStatus(200);
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Sofia ouvindo na porta ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Sofia rodando na porta ${PORT}`);
+});
