@@ -5,8 +5,8 @@ const { OpenAI } = require('openai');
 const app = express();
 app.use(express.json());
 
-// Pega as variáveis
-const getEnv = (key) => (process.env[key] ? process.env[key].trim() : null);
+// Pega as variáveis e limpa espaços
+const getEnv = (k) => (process.env[k] ? process.env[k].trim() : null);
 
 const CONFIG = {
     OPENAI_KEY: getEnv('OPENAI_KEY'),
@@ -15,11 +15,10 @@ const CONFIG = {
     INSTANCE: getEnv('INSTANCE')
 };
 
-// IA Sofia
-const openai = new OpenAI({ apiKey: CONFIG.OPENAI_KEY });
+const openai = new OpenAI({ apiKey: CONFIG.OPENAI_KEY || 'vazia' });
 
-// ROTA IMPORTANTE: O Easypanel precisa disso para saber que a Sofia não morreu
-app.get('/', (req, res) => res.status(200).send("OK"));
+// ESSENCIAL: Easypanel usa isso para saber que o app está vivo
+app.get('/', (req, res) => res.status(200).send("Sofia Online v2"));
 app.get('/health', (req, res) => res.status(200).send("OK"));
 
 app.post('/webhook', async (req, res) => {
@@ -33,10 +32,7 @@ app.post('/webhook', async (req, res) => {
 
         const completion = await openai.chat.completions.create({
             model: "gpt-4o",
-            messages: [
-                { role: "system", content: "Você é a Sofia, atendente simpática da Casa da Sogra." },
-                { role: "user", content: customerText }
-            ]
+            messages: [{ role: "system", content: "Você é a Sofia, atendente da Casa da Sogra." }, { role: "user", content: customerText }]
         });
 
         await axios.post(`${CONFIG.EVOLUTION_URL}/message/sendText/${CONFIG.INSTANCE}`, {
@@ -53,8 +49,6 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-// AQUI O SEGREDO: Forçar a porta 3000 para sair do conflito da porta 80 da VPS
+// USANDO A PORTA 3000
 const PORT = 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Sofia rodando na porta ${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Sofia rodando na porta ${PORT}`));
